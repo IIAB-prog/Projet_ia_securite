@@ -1,41 +1,51 @@
 import os
-# Désactiver GPU CUDA avant le chargement TensorFlow
+
+# Désactivation GPU avant TensorFlow
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import tensorflow as tf
-tf.config.set_visible_devices([], 'GPU')
 import joblib
 
 
+# Configuration CPU TensorFlow
+tf.config.set_visible_devices([], 'GPU')
+
+
 # ==========================================================
-# CONFIGURATION DE LA PAGE
+# CONFIGURATION PAGE
 # ==========================================================
 
 st.set_page_config(
-    page_title="IDS2025 - Détection d'Intrusions",
+    page_title="IDS2025 - Détection Intrusions",
     page_icon="🛡️",
     layout="wide"
 )
 
 
 # ==========================================================
-# CHARGEMENT DU MODELE
+# CHARGEMENT MODELE (AU BESOIN)
 # ==========================================================
 
 @st.cache_resource
 def load_model():
 
-    model = tf.keras.models.load_model("ids_model.keras")
-    scaler = joblib.load("scaler.pkl")
-    encoder = joblib.load("encoder.pkl")
+    model = tf.keras.models.load_model(
+        "ids_model.keras"
+    )
+
+    scaler = joblib.load(
+        "scaler.pkl"
+    )
+
+    encoder = joblib.load(
+        "encoder.pkl"
+    )
 
     return model, scaler, encoder
-
-
-model, scaler, encoder = load_model()
 
 
 
@@ -48,7 +58,7 @@ st.subheader(
     "Détection intelligente des intrusions réseau par Deep Learning"
 )
 
-st.markdown("---")
+st.divider()
 
 
 
@@ -75,32 +85,36 @@ if menu == "Accueil":
 
     st.header("Présentation")
 
-    st.write("""
-Cette application permet de détecter automatiquement
-les intrusions réseau grâce à un modèle Deep Learning.
+    st.write(
+        """
+Cette application permet la détection automatique
+des intrusions réseau grâce à un modèle Deep Learning.
 
 Fonctionnalités :
 
-✅ Importation CSV(79 colonnes necessaires, 0-n lignes)  
+✅ Import CSV (79 caractéristiques réseau)
 
-✅ Importation Excel XLSX (79 colonnes necessaires, 0-n lignes)
+✅ Import Excel XLSX
 
-✅ Classification automatique des connexions réseau  
+✅ Classification automatique
 
-✅ Probabilité de prédiction  
+✅ Probabilité de prédiction
 
 ✅ Export des résultats
-""")
+"""
+    )
 
 
 
 # ==========================================================
-# ANALYSE CSV / XLSX
+# ANALYSE CSV/XLSX
 # ==========================================================
 
 elif menu == "Analyse fichier CSV/XLSX":
 
+
     st.header("📂 Analyse d'un fichier réseau")
+
 
     uploaded_file = st.file_uploader(
         "Importer un fichier CSV ou Excel",
@@ -111,80 +125,173 @@ elif menu == "Analyse fichier CSV/XLSX":
     if uploaded_file is not None:
 
 
+        # Taille fichier
+
+        taille = uploaded_file.size / (1024 * 1024)
+
+        st.info(
+            f"Taille du fichier : {taille:.2f} MB"
+        )
+
+
+        if taille > 50:
+
+            st.error(
+                "Fichier trop volumineux (maximum 50 MB)"
+            )
+
+            st.stop()
+
+
+
         # Lecture fichier
 
-        if uploaded_file.name.endswith(".csv"):
-
-            dataframe = pd.read_csv(uploaded_file)
-
-        else:
-
-            dataframe = pd.read_excel(uploaded_file)
+        try:
 
 
+            if uploaded_file.name.endswith(".csv"):
 
-        st.subheader("Aperçu des données")
 
-        st.dataframe(dataframe.head())
+                dataframe = pd.read_csv(
+                    uploaded_file,
+                    low_memory=False
+                )
 
+
+            else:
+
+
+                dataframe = pd.read_excel(
+                    uploaded_file,
+                    engine="openpyxl"
+                )
+
+
+        except Exception as e:
+
+
+            st.error(
+                f"Erreur lecture fichier : {e}"
+            )
+
+            st.stop()
+
+
+
+        # Limite mémoire
+
+        if dataframe.shape[0] > 50000:
+
+
+            st.warning(
+                "Le fichier contient plus de 50000 lignes. "
+                "Seules les 50000 premières seront analysées."
+            )
+
+
+            dataframe = dataframe.head(50000)
+
+
+
+        st.subheader(
+            "Aperçu des données"
+        )
+
+
+        st.dataframe(
+            dataframe.head()
+        )
 
 
         st.write(
-            f"Nombre de lignes : {dataframe.shape[0]}"
+            f"Lignes : {dataframe.shape[0]}"
         )
+
 
         st.write(
-            f"Nombre de colonnes : {dataframe.shape[1]}"
+            f"Colonnes : {dataframe.shape[1]}"
         )
 
 
 
-        if st.button("🚀 Lancer la détection"):
+        # Bouton analyse
+
+        if st.button(
+            "🚀 Lancer la détection"
+        ):
 
 
             try:
 
-                # Colonnes attendues par le scaler
+
+                with st.spinner(
+                    "Chargement du modèle IA..."
+                ):
+
+
+                    model, scaler, encoder = load_model()
+
+
+
+                # Colonnes attendues
 
                 expected_features = list(
                     scaler.feature_names_in_
                 )
 
 
+
                 missing_columns = list(
                     set(expected_features)
-                    - set(dataframe.columns)
+                    -
+                    set(dataframe.columns)
                 )
+
 
 
                 if missing_columns:
 
+
                     st.error(
-                        "Colonnes manquantes dans le fichier :"
+                        "Colonnes manquantes :"
                     )
 
-                    st.write(missing_columns)
+                    st.write(
+                        missing_columns
+                    )
 
                     st.stop()
 
 
 
-                # Réorganisation des colonnes
+                # Réorganisation
 
-                X = dataframe[expected_features]
+                X = dataframe[
+                    expected_features
+                ]
+
 
 
                 # Normalisation
 
-                X_scaled = scaler.transform(X)
+                X_scaled = scaler.transform(
+                    X
+                )
 
 
 
-                # Prédiction
+                st.info(
+                    "Prédiction en cours..."
+                )
+
+
+                # Prediction par batch
 
                 prediction = model.predict(
-                    X_scaled
+                    X_scaled,
+                    batch_size=32
                 )
+
 
 
                 classes = np.argmax(
@@ -193,9 +300,11 @@ elif menu == "Analyse fichier CSV/XLSX":
                 )
 
 
+
                 labels = encoder.inverse_transform(
                     classes
                 )
+
 
 
                 probabilites = np.max(
@@ -205,11 +314,10 @@ elif menu == "Analyse fichier CSV/XLSX":
 
 
 
-                # Ajout résultats
-
                 dataframe["Prediction"] = labels
 
-                dataframe["Probabilite"] = (
+
+                dataframe["Probabilite (%)"] = (
                     probabilites * 100
                 ).round(2)
 
@@ -231,10 +339,8 @@ elif menu == "Analyse fichier CSV/XLSX":
 
 
 
-                # Statistiques
-
                 st.subheader(
-                    "Résumé"
+                    "Statistiques"
                 )
 
 
@@ -247,23 +353,25 @@ elif menu == "Analyse fichier CSV/XLSX":
 
                 # Export
 
-                csv = dataframe.to_csv(
+                resultat = dataframe.to_csv(
                     index=False
                 )
 
 
                 st.download_button(
-                    label="📥 Télécharger les résultats",
-                    data=csv,
+                    "📥 Télécharger les résultats",
+                    resultat,
                     file_name="IDS2025_resultats.csv",
                     mime="text/csv"
                 )
 
 
+
             except Exception as e:
 
+
                 st.error(
-                    f"Erreur pendant l'analyse : {e}"
+                    f"Erreur pendant analyse : {e}"
                 )
 
 
@@ -274,10 +382,14 @@ elif menu == "Analyse fichier CSV/XLSX":
 
 elif menu == "À propos":
 
-    st.header("À propos du projet")
+
+    st.header(
+        "À propos du projet"
+    )
 
 
-    st.write("""
+    st.markdown(
+        """
 ## IDS2025
 
 Système intelligent de détection
@@ -286,27 +398,27 @@ des intrusions réseau.
 ### Technologies
 
 - Python
-- TensorFlow / Keras
+- TensorFlow/Keras
 - Streamlit
 - Scikit-Learn
 - Pandas
-- NumPy
 
 ### Modèle
 
 MLP (Multi Layer Perceptron)
 
-### Entrée
+### Entrées
 
-Fichier CSV ou XLSX contenant
+Fichier CSV/XLSX contenant
 les caractéristiques réseau.
 
-### Sortie
+### Sorties
 
-Classification :
 - Trafic normal
 - Trafic malveillant
-""")
+- Probabilité
+"""
+    )
 
 
 
@@ -314,8 +426,8 @@ Classification :
 # FOOTER
 # ==========================================================
 
-st.markdown("---")
+st.divider()
 
 st.caption(
-    "Projet Master 2 IA- U_AUBEN - Détection des Intrusions Réseau - By IMA ADAM"
+    "Projet Master 2 IA - Détection des Intrusions Réseau - IMA ADAM"
 )
