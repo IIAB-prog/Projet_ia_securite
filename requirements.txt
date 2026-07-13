@@ -1,0 +1,8 @@
+streamlit==1.45.0
+tensorflow==2.20.0
+pandas
+numpy
+scikit-learn
+joblib
+openpyxl
+python=3.13
