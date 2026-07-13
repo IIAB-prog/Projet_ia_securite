@@ -178,8 +178,10 @@ elif menu == "Analyse fichier CSV/XLSX":
                 # Prédiction
 
                 prediction = model.predict(
-                    X_scaled
-                )
+    X_scaled,
+    batch_size=256,
+    verbose=1
+)
 
 
                 classes = np.argmax(
