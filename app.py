@@ -1,7 +1,11 @@
+# Désactiver GPU CUDA avant le chargement TensorFlow
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 import streamlit as st
 import pandas as pd
 import numpy as np
 import tensorflow as tf
+tf.config.set_visible_devices([], 'GPU')
 import joblib
 
 
