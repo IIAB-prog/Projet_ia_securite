@@ -1,3 +1,13 @@
+import os
+
+# ================================
+# CONFIGURATION CPU RENDER
+# ================================
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -5,314 +15,430 @@ import tensorflow as tf
 import joblib
 
 
-# ==========================================================
-# CONFIGURATION DE LA PAGE
-# ==========================================================
+
+# ================================
+# CONFIGURATION STREAMLIT
+# ================================
 
 st.set_page_config(
-    page_title="IDS2025 - Détection d'Intrusions",
+    page_title="IDS2025 - Détection Intrusion",
     page_icon="🛡️",
     layout="wide"
 )
 
 
-# ==========================================================
-# CHARGEMENT DU MODELE
-# ==========================================================
 
-@st.cache_resource
+# ================================
+# CHARGEMENT MODELE
+# ================================
+
+@st.cache_resource(show_spinner=True)
 def load_model():
 
-    model = tf.keras.models.load_model("ids_model.keras")
-    scaler = joblib.load("scaler.pkl")
-    encoder = joblib.load("encoder.pkl")
+    with tf.device("/CPU:0"):
+
+        model = tf.keras.models.load_model(
+            "ids_model.keras"
+        )
+
+    scaler = joblib.load(
+        "scaler.pkl"
+    )
+
+    encoder = joblib.load(
+        "encoder.pkl"
+    )
+
 
     return model, scaler, encoder
+
 
 
 model, scaler, encoder = load_model()
 
 
 
-# ==========================================================
+# ================================
 # TITRE
-# ==========================================================
+# ================================
 
 st.title("🛡️ IDS2025")
 st.subheader(
     "Détection intelligente des intrusions réseau par Deep Learning"
 )
 
-st.markdown("---")
+
+st.divider()
 
 
 
-# ==========================================================
+# ================================
 # MENU
-# ==========================================================
+# ================================
 
 menu = st.sidebar.selectbox(
-    "Navigation",
+    "Menu",
     [
         "Accueil",
-        "Analyse fichier CSV/XLSX",
-        "À propos"
+        "Analyse CSV/XLSX",
+        "A propos"
     ]
 )
 
 
 
-# ==========================================================
+# ================================
 # ACCUEIL
-# ==========================================================
+# ================================
 
 if menu == "Accueil":
 
+
     st.header("Présentation")
 
-    st.write("""
-Cette application permet de détecter automatiquement
-les intrusions réseau grâce à un modèle Deep Learning.
 
-Fonctionnalités :
+    st.write(
+    """
+    Cette application utilise un modèle Deep Learning
+    pour détecter automatiquement les intrusions réseau.
 
-✅ Importation CSV(79 colonnes necessaires, 0-n lignes)  
+    Fonctionnalités :
 
-✅ Importation Excel XLSX (79 colonnes necessaires, 0-n lignes)
-
-✅ Classification automatique des connexions réseau  
-
-✅ Probabilité de prédiction  
-
-✅ Export des résultats
-""")
-
-
-
-# ==========================================================
-# ANALYSE CSV / XLSX
-# ==========================================================
-
-elif menu == "Analyse fichier CSV/XLSX":
-
-    st.header("📂 Analyse d'un fichier réseau")
-
-    uploaded_file = st.file_uploader(
-        "Importer un fichier CSV ou Excel",
-        type=["csv", "xlsx"]
+    ✅ Import CSV  
+    ✅ Import Excel XLSX  
+    ✅ Analyse automatique  
+    ✅ Classification trafic normal/malveillant  
+    ✅ Export des résultats
+    """
     )
 
 
-    if uploaded_file is not None:
+
+# ================================
+# ANALYSE FICHIER
+# ================================
+
+elif menu == "Analyse CSV/XLSX":
 
 
-        # Lecture fichier
-
-        if uploaded_file.name.endswith(".csv"):
-
-            dataframe = pd.read_csv(uploaded_file)
-
-        else:
-
-            dataframe = pd.read_excel(uploaded_file)
+    st.header("📂 Charger un fichier réseau")
 
 
-
-        st.subheader("Aperçu des données")
-
-        st.dataframe(dataframe.head())
+    uploaded_file = st.file_uploader(
+        "Choisir un fichier",
+        type=["csv","xlsx"]
+    )
 
 
 
-        st.write(
-            f"Nombre de lignes : {dataframe.shape[0]}"
-        )
-
-        st.write(
-            f"Nombre de colonnes : {dataframe.shape[1]}"
-        )
+    if uploaded_file:
 
 
+        # Limite 50 Mo
 
-        if st.button("🚀 Lancer la détection"):
+        if uploaded_file.size > 50 * 1024 * 1024:
+
+            st.error(
+                "Fichier trop volumineux (maximum 50 Mo)"
+            )
+
+            st.stop()
 
 
-            try:
 
-                # Colonnes attendues par le scaler
+        try:
 
-                expected_features = list(
-                    scaler.feature_names_in_
+
+            # ==========================
+            # Lecture fichier
+            # ==========================
+
+
+            if uploaded_file.name.endswith(".csv"):
+
+                df = pd.read_csv(
+                    uploaded_file
+                )
+
+            else:
+
+                df = pd.read_excel(
+                    uploaded_file
                 )
 
 
-                missing_columns = list(
-                    set(expected_features)
-                    - set(dataframe.columns)
-                )
+
+            st.success(
+                "Fichier chargé avec succès"
+            )
 
 
-                if missing_columns:
+            st.write(
+                "Dimensions :",
+                df.shape
+            )
 
-                    st.error(
-                        "Colonnes manquantes dans le fichier :"
+
+            st.dataframe(
+                df.head()
+            )
+
+
+
+            # ==========================
+            # LANCEMENT ANALYSE
+            # ==========================
+
+
+            if st.button(
+                "🚀 Lancer la détection"
+            ):
+
+
+
+                progress = st.progress(0)
+
+                message = st.empty()
+
+
+
+                try:
+
+
+                    message.info(
+                        "Vérification des colonnes..."
                     )
 
-                    st.write(missing_columns)
 
-                    st.stop()
-
-
-
-                # Réorganisation des colonnes
-
-                X = dataframe[expected_features]
-
-
-                # Normalisation
-
-                X_scaled = scaler.transform(X)
+                    progress.progress(
+                        10
+                    )
 
 
 
-                # Prédiction
+                    # Colonnes attendues
 
-                prediction = model.predict(
-    X_scaled,
-    batch_size=256,
-    verbose=1
-)
-
-
-                classes = np.argmax(
-                    prediction,
-                    axis=1
-                )
-
-
-                labels = encoder.inverse_transform(
-                    classes
-                )
-
-
-                probabilites = np.max(
-                    prediction,
-                    axis=1
-                )
+                    features = list(
+                        scaler.feature_names_in_
+                    )
 
 
 
-                # Ajout résultats
-
-                dataframe["Prediction"] = labels
-
-                dataframe["Probabilite"] = (
-                    probabilites * 100
-                ).round(2)
+                    missing = list(
+                        set(features)
+                        -
+                        set(df.columns)
+                    )
 
 
 
-                st.success(
-                    "✅ Analyse terminée"
-                )
+                    if missing:
 
 
-                st.subheader(
-                    "Résultats"
-                )
+                        st.error(
+                            "Colonnes manquantes :"
+                        )
 
 
-                st.dataframe(
-                    dataframe
-                )
+                        st.write(
+                            missing
+                        )
 
-
-
-                # Statistiques
-
-                st.subheader(
-                    "Résumé"
-                )
-
-
-                st.bar_chart(
-                    dataframe["Prediction"]
-                    .value_counts()
-                )
+                        st.stop()
 
 
 
-                # Export
+                    # Garder uniquement les features
 
-                csv = dataframe.to_csv(
-                    index=False
-                )
-
-
-                st.download_button(
-                    label="📥 Télécharger les résultats",
-                    data=csv,
-                    file_name="IDS2025_resultats.csv",
-                    mime="text/csv"
-                )
-
-
-            except Exception as e:
-
-                st.error(
-                    f"Erreur pendant l'analyse : {e}"
-                )
+                    X = df[
+                        features
+                    ]
 
 
 
-# ==========================================================
+                    progress.progress(
+                        30
+                    )
+
+
+                    message.info(
+                        "Normalisation..."
+                    )
+
+
+                    X_scaled = scaler.transform(
+                        X
+                    )
+
+
+
+                    progress.progress(
+                        50
+                    )
+
+
+                    message.info(
+                        "Prédiction Deep Learning..."
+                    )
+
+
+
+                    # Prédiction par batch
+
+                    prediction = model.predict(
+                        X_scaled,
+                        batch_size=256,
+                        verbose=0
+                    )
+
+
+
+                    progress.progress(
+                        80
+                    )
+
+
+
+                    classes = np.argmax(
+                        prediction,
+                        axis=1
+                    )
+
+
+
+                    labels = encoder.inverse_transform(
+                        classes
+                    )
+
+
+
+                    probabilites = np.max(
+                        prediction,
+                        axis=1
+                    )
+
+
+
+                    # Résultats
+
+                    result = df.copy()
+
+
+                    result["Prediction"] = labels
+
+
+                    result["Probabilite (%)"] = (
+                        probabilites * 100
+                    ).round(2)
+
+
+
+                    progress.progress(
+                        100
+                    )
+
+
+                    message.success(
+                        "Analyse terminée ✅"
+                    )
+
+
+
+                    st.subheader(
+                        "Résultats"
+                    )
+
+
+                    st.dataframe(
+                        result
+                    )
+
+
+
+                    # Statistiques
+
+
+                    st.subheader(
+                        "Statistiques"
+                    )
+
+
+                    st.bar_chart(
+                        result["Prediction"]
+                        .value_counts()
+                    )
+
+
+
+                    # Export
+
+
+                    csv = result.to_csv(
+                        index=False
+                    )
+
+
+                    st.download_button(
+                        "📥 Télécharger résultat",
+                        csv,
+                        "IDS2025_resultats.csv",
+                        "text/csv"
+                    )
+
+
+
+                except Exception as e:
+
+
+                    st.error(
+                        f"Erreur analyse : {e}"
+                    )
+
+
+
+        except Exception as e:
+
+
+            st.error(
+                f"Erreur lecture fichier : {e}"
+            )
+
+
+
+# ================================
 # A PROPOS
-# ==========================================================
+# ================================
 
-elif menu == "À propos":
-
-    st.header("À propos du projet")
+elif menu == "A propos":
 
 
-    st.write("""
-## IDS2025
+    st.header(
+        "Projet IDS2025"
+    )
 
-Système intelligent de détection
-des intrusions réseau.
 
-### Technologies
+    st.write(
+    """
+    Système de détection d'intrusion réseau.
 
-- Python
-- TensorFlow / Keras
-- Streamlit
-- Scikit-Learn
-- Pandas
-- NumPy
+    Technologies :
 
-### Modèle
+    - Python
+    - TensorFlow
+    - Keras
+    - Streamlit
+    - Scikit-Learn
 
-MLP (Multi Layer Perceptron)
+    Modèle :
 
-### Entrée
-
-Fichier CSV ou XLSX contenant
-les caractéristiques réseau.
-
-### Sortie
-
-Classification :
-- Trafic normal
-- Trafic malveillant
-""")
+    MLP Deep Learning
+    """
+    )
 
 
 
-# ==========================================================
-# FOOTER
-# ==========================================================
-
-st.markdown("---")
+st.divider()
 
 st.caption(
-    "Projet Master 2 IA- U_AUBEN - Détection des Intrusions Réseau - By IMA ADAM"
+    "Master 2 IA - Détection des Intrusions Réseau"
 )
